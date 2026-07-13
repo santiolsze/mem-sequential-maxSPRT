@@ -1,6 +1,13 @@
 #import "deck_setup.typ": deck
 #show: deck
 
+// colores para distinguir el RR de la alternativa/estimado y los esperados mu
+#let aRR = rgb("#c0392b")   // RR (alternativa / a estimar)
+#let aMU = rgb("#1f8a70")   // mu (esperados bajo H0)
+#let cRR = text(fill: aRR)[RR]
+#let cMt = text(fill: aMU)[$mu_t$]
+#let cMi = text(fill: aMU)[$mu_i$]
+
 = MaxSPRT: vigilancia secuencial de seguridad de vacunas
 
 Un test de razón de verosimilitud secuencial con alternativa compuesta
@@ -11,120 +18,102 @@ Basado en Kulldorff, Davis, Kolczak, Lewis, Lieu y Platt (2011), _A Maximized Se
 
 == El problema
 
-Los ensayos clínicos (fase 2/3) no alcanzan para detectar eventos adversos raros: la muestra es chica y la población suele ser más homogénea que la real.
+Los ensayos clínicos no alcanzan para detectar eventos adversos raros: muestra chica y población más homogénea que la real. Una vez en el mercado, hay que seguir vigilando.
 
-Por eso, una vez que un fármaco o vacuna sale al mercado, hace falta seguir vigilando.
+Importa *revisar la evidencia en forma continua/casi continua*, controlando los falsos positivos.
 
-- Datos disponibles: reclamos de seguros de salud, historias clínicas electrónicas.
-- Se quiere revisar la evidencia seguido (semanal, casi continuo), no una sola vez al final.
-- Mirar los datos muchas veces sin corregir infla los falsos positivos. Hace falta un método pensado para eso.
-
-Ahí entra el análisis secuencial.
 
 == ¿Qué es el riesgo relativo?
 
-El riesgo relativo (RR) compara cuántos casos de un evento se observan realmente contra cuántos se esperarían si la vacuna no tuviera ningún efecto:
-
 $ "RR" = ("casos observados")/("casos esperados sin efecto de la vacuna") $
 
-- $"RR" = 1$: no hay exceso, todo es como se esperaba.
-- $"RR" = 2$: se observó el doble de casos que los esperados.
+- $"RR" = 1$: no hay exceso, todo como se esperaba.
+- $"RR" = 2$: el doble de casos que los esperados.
 - $"RR" = 1.2$: un 20% más de casos que lo esperado.
-
-Ejemplo: si históricamente se esperan 50 casos de fiebre en cierto período y se observan 100, $"RR"=2$.
-
-Todo lo que sigue busca decidir, a medida que llegan los datos, si el RR verdadero es mayor a 1.
 
 == SPRT clásico (Wald, 1945-47)
 
-Sea $C_t$ el número de eventos adversos observados hasta el tiempo $t$, con media esperada $mu_t$ bajo $H_0$ (sin riesgo agregado).
+$C_t$: eventos adversos observados hasta $t$ (en $D$ días); $#cMt$ los esperados bajo $H_0$. El SPRT contrasta dos hipótesis *simples*:
 
-$ H_0: "RR" = 1 quad "vs." quad H_A: "RR" = "RR fijo" $
+$ H_0: C_t tilde "Poisson"(#cMt) quad (#cRR=1) quad "vs." quad H_A: C_t tilde "Poisson"(#cRR #cMt) quad (#cRR" fija, a priori") $
 
-El estadístico es la razón de verosimilitudes (Poisson):
+El estadístico es la razón de verosimilitudes $"LR"_t = P("datos"|H_A) \/ P("datos"|H_0)$. Para armarla, partimos $[0,t]$ en intervalos $i=1,...,t$ con $n_i$ eventos y $#cMi$ esperados, independientes:
 
-$ "LLR"_t = (1-"RR") mu_t + c_t ln("RR") $
+$ n_i tilde "Poisson"(#cMi) " bajo " H_0, quad n_i tilde "Poisson"(#cRR #cMi) " bajo " H_A $
 
-Regla de decisión, monitoreada continuamente:
+La verosimilitud conjunta es la productoria de las densidades Poisson:
 
-- si $"LLR"_t >= ln[(1-beta)\/alpha]$: se rechaza $H_0$ (señal)
-- si $"LLR"_t <= ln[beta\/(1-alpha)]$: se acepta $H_0$
+$ L_t (#cRR) = product_(i=1)^t (e^(-#cRR #cMi) (#cRR #cMi)^(n_i))/(n_i !) $
 
-Simple, pero hay que fijar un RR de antemano. Ese "detalle" resulta ser el problema.
+== SPRT clásico: de la verosimilitud al estadístico
 
-== El problema del SPRT clásico
+Reagrupando la productoria (exponenciales se suman, potencias de $#cRR$ se acumulan):
 
-Dos vigilancias sobre los mismos datos, cambiando solo el RR de la alternativa: una llega antes al límite, la otra tarda mucho más (o ni llega).
+$ L_t (#cRR) = e^(-#cRR #cMt) #cRR^(c_t) product_(i=1)^t #cMi^(n_i)/n_i! $
 
-== El problema del SPRT clásico
+con $#cMt = sum_i #cMi$ y $c_t = sum_i n_i$. El último factor no depende de $#cRR$ y se cancela en el cociente:
 
-#align(center)[
-  #image("figures/sprt_sensibilidad.png", width: 72%)
-]
+$ "LR"_t = (L_t (#cRR))/(L_t (1)) = e^((1-#cRR)#cMt) #cRR^(c_t) quad => quad "LLR"_t = (1-#cRR)#cMt + c_t ln(#cRR) $
 
-== Pediarix: un caso real de resultados contradictorios
+Regla: señal si $"LLR"_t >= ln[(1-beta)\/alpha]=2.77$; se acepta $H_0$ si $"LLR"_t <= ln[beta\/(1-alpha)]=-1.56$ ($alpha=0.05, beta=0.20$).
 
-Datos de Vaccine Safety Datalink, ≈650.000 chicos. Se mira si aumenta el riesgo de fiebre o de síntomas neurológicos en los 28 días post-vacunación.
+Hay que fijar el $#cRR$ de antemano — ese "detalle" es el problema.
 
-*Fiebre:*
-- con $H_A: "RR"=2.0$ → no se rechaza $H_0$ (7 semanas y se acepta)
-- con $H_A: "RR"=1.2$ → se rechaza $H_0$ a las 13 semanas
+== El problema del SPRT clásico (I): fiebre
 
-*Síntomas neurológicos:*
-- con $H_A: "RR"=1.2$ → señal a las 65 semanas
-- con $H_A: "RR"=2.0$ → señal a las 32 semanas
+#grid(columns: (58%, 42%), gutter: 1em,
+  image("figures/sprt_fiebre.png", width: 100%),
+  [
+    Pediarix, ≈650.000 chicos (Vaccine Safety Datalink). El RR verdadero termina en *≈ 1.16*.
 
-Mismos datos, conclusión opuesta según qué RR se haya elegido a priori. Y en la práctica casi nunca se sabe de antemano cuál va a ser el riesgo relativo verdadero.
+    - con $H_A: "RR"=1.2$ (cerca del real) → *señal a las 13 sem*.
+    - con $H_A: "RR"=2.0$ (lejos del real) → cruza el límite inferior y *acepta $H_0$ a las 7 sem*: no detecta nada.
+
+    La alternativa mal elegida (2.0) hace *perder* un riesgo real.
+  ]
+)
+
+== El problema del SPRT clásico (II): síntomas neurológicos
+
+#grid(columns: (58%, 42%), gutter: 1em,
+  image("figures/sprt_neuro.png", width: 100%),
+  [
+    Mismos datos, otro evento. Acá el RR verdadero termina en *≈ 2.75*.
+
+    - con $H_A: "RR"=2.0$ (cerca del real) → *señal a las 32 sem*.
+    - con $H_A: "RR"=1.2$ (lejos del real) → *señal recién a las 65 sem*.
+
+    Ambas detectan, pero elegir mal el RR *retrasa la señal* casi 8 meses: el tiempo hasta la alarma depende del RR fijado a priori, que casi nunca conocemos.
+  ]
+)
 
 == La idea de MaxSPRT
 
-En lugar de fijar un RR puntual, se usa una alternativa *compuesta*:
+El SPRT clásico obliga a fijar el $#cRR$ de la alternativa antes de ver los datos. MaxSPRT usa una alternativa *compuesta*:
 
-$ H_0: "RR" = 1 quad "vs." quad H_A: "RR" > 1 $
+$ H_0: #cRR = 1 quad "vs." quad H_A: #cRR > 1 $
 
-El estadístico ya no evalúa un único RR: maximiza la verosimilitud sobre todos los RR posibles (test de razón de verosimilitud generalizado, Lorden 1973).
+Clave: se *monta sobre el mismo $"LLR"_t$ ya deducido*. En vez de un $#cRR$ fijo, se usa el $#cRR$ que maximiza la verosimilitud — estimado de los datos, no elegido a priori:
 
-$ "LR"_t = max_("RR">1) (P(C_t=c_t | H_A)) / (P(C_t=c_t | H_0)) $
+$ "LLR"_t = max_(#cRR > 1) [ (1-#cRR)#cMt + c_t ln(#cRR) ] $
 
-Ventaja práctica: no hay que adivinar el riesgo relativo "interesante". El propio test busca el RR que mejor explica lo observado.
-
-Se paga un precio en potencia comparado con adivinar el RR correcto de entrada, pero es mucho más robusto cuando no sabemos ese valor.
-
-== Formalizando el riesgo relativo
-
-Para trabajar con esto matemáticamente, dividimos el tiempo en intervalos $1, ..., t$. En cada uno se observan $n_i$ eventos, con $mu_i$ esperados bajo $H_0$, independientes entre sí:
-
-$ n_i tilde "Poisson"(mu_i) "  bajo " H_0 quad quad n_i tilde "Poisson"("RR" mu_i) "  bajo " H_A $
-
-La verosimilitud conjunta hasta $t$ es la productoria de esas densidades:
-
-$ L_t("RR") = product_(i=1)^t (e^(-"RR" mu_i) ("RR" mu_i)^(n_i))/(n_i !) $
-
-== Cociente de verosimilitud Poisson
-
-Reagrupando la productoria (las exponenciales se suman, las potencias de RR se acumulan):
-
-$ L_t("RR") = e^(-"RR" mu_t) "RR"^(c_t) product_(i=1)^t mu_i^(n_i)/n_i! $
-
-con $mu_t = sum_i mu_i$ y $c_t = sum_i n_i$: lo esperado y lo observado, acumulados hasta $t$. El último factor no depende de RR, así que se cancela en cualquier cociente.
-
-El cociente de verosimilitud contra $H_0$ ($"RR"=1$):
-
-$ "LR"_t("RR") = L_t("RR")/L_t(1) = e^((1-"RR")mu_t) "RR"^(c_t) quad => quad "LLR"_t("RR") = (1-"RR")mu_t + c_t ln("RR") $
+(razón de verosimilitud generalizada, Lorden 1973). No hay que adivinar el RR "interesante": el test busca el que mejor explica lo observado. Se paga algo de potencia, pero es mucho más robusto.
 
 == Maximizando sobre RR
 
-MaxSPRT no fija RR: lo maximiza sobre $"RR">1$. Derivando $"LLR"_t("RR")$ e igualando a cero, el máximo se da en el RR que coincide con lo observado sobre lo esperado:
+Derivando $"LLR"_t$ respecto de $#cRR$ e igualando a cero, el máximo se da en el $#cRR$ que iguala lo observado con lo esperado:
 
-$ (partial "LLR"_t)/(partial "RR") = -mu_t + c_t/"RR" = 0 quad => quad hat("RR")_t = c_t/mu_t $
+$ (partial "LLR"_t)/(partial #cRR) = -#cMt + c_t/#cRR = 0 quad => quad hat(#cRR)_t = c_t/#cMt $
 
-Reemplazando $hat("RR")_t$ en $"LLR"_t("RR")$ se obtiene el estadístico final del test.
+Es el estimador de máxima verosimilitud: *reemplaza al $#cRR$ fijo de la alternativa*. Sustituyéndolo en $"LLR"_t$ se obtiene el estadístico final.
 
 == MaxSPRT para datos Poisson
 
-$ "LLR"_t = (mu_t - c_t) + c_t ln(c_t / mu_t) $
+Sustituyendo $hat(#cRR)_t = c_t\/#cMt$:
 
-y $"LLR"_t = 0$ si $c_t < mu_t$ (no hay evidencia de exceso).
+$ "LLR"_t = (#cMt - c_t) + c_t ln(c_t / #cMt) $
+
+y $"LLR"_t = 0$ si $c_t < #cMt$ (no hay evidencia de exceso).
 
 Regla, monitoreada continuamente:
 
@@ -133,13 +122,50 @@ Regla, monitoreada continuamente:
 - ya no hay límite inferior para "aceptar" $H_A$ - no interesa frenar si la vacuna resulta protectora
 - sí hay un límite superior $T$ en la duración de la vigilancia (cantidad esperada de eventos bajo $H_0$), para no vigilar para siempre
 
+== Y si no tenemos $mu_t$ confiable...
+
+A veces no hay tasa basal esperada confiable. Se compara directamente tiempo expuesto vs. no expuesto (diseño pareado, en vez de Poisson):
+
+- autocontrolado: mismo individuo, ventana expuesta vs. no expuesta
+- con controles: expuestos vs. no expuestos, pareados por edad/sexo
+
+Cada evento es como tirar una moneda: cae del lado expuesto o no. Sea $z$ la duración del período no expuesto sobre la del expuesto ($z=1$ para un pareo 1:1).
+
+$ H_0: P("expuesto") = 1/(z+1) quad quad H_A: P("expuesto") = "RR"/("RR"+z) $
+
+El límite de vigilancia ya no se mide en eventos esperados ($T$) sino en eventos observados en total ($N$).
+
+== MaxSPRT binomial: la verosimilitud
+
+Sea $c_n$ de los $n$ eventos el número del lado expuesto. Condicional en $n$, $C_n$ es binomial (prob. $p$ de caer expuesto):
+
+$ P(C_n = c_n) = binom(n, c_n) p^(c_n) (1-p)^(n-c_n) $
+
+Esa $p$ depende del RR: $p("RR")="RR"\/("RR"+z)$ y $1-p = z\/("RR"+z)$. Reemplazando:
+
+$ P(C_n = c_n | "RR") = binom(n, c_n) ("RR"/("RR"+z))^(c_n) (z/("RR"+z))^(n-c_n) $
+
+El cociente contra $H_0$ ($p=1\/(z+1)$) cancela $binom(n,c_n)$ y se maximiza sobre $"RR">1$:
+
+$ "LR"_n("RR") = (("RR"/("RR"+z))^(c_n) (z/("RR"+z))^(n-c_n)) / ((1/(z+1))^(c_n) (z/(z+1))^(n-c_n)) $
+
+== MaxSPRT binomial: maximización y estadístico
+
+Maximizar la binomial sobre $p$ da el estimador de proporción $hat(p) = c_n\/n$, que corresponde a $hat("RR")_n = z c_n\/(n-c_n)$. Reemplazando, el numerador queda $ (c_n\/n)^(c_n) ((n-c_n)\/n)^(n-c_n) $ y el estadístico es:
+
+$ "LLR"_n = c_n ln(c_n/n) + (n-c_n)ln((n-c_n)/n) - c_n ln(1/(z+1)) - (n-c_n) ln(z/(z+1)) $
+
+(válido si $z c_n\/(n-c_n) > 1$; si no, $"LLR"_n = 0$: no hay exceso del lado expuesto).
+
+Misma lógica que el caso Poisson —alternativa compuesta $"RR">1$, maximización de la verosimilitud, tablas de valores críticos— pero partiendo de la binomial en vez de la Poisson.
+
 == Valores críticos y ejemplo numérico
 
-$V$ se elige para controlar el error de tipo I: es el valor más chico tal que, bajo $H_0$, la probabilidad de que $"LLR"_t$ llegue a cruzarlo alguna vez antes de $T$ sea exactamente $alpha$.
+$V$ controla el error de tipo I: el valor más chico tal que, bajo $H_0$, la probabilidad de cruzarlo alguna vez antes de $T$ sea $alpha$.
 
 $ P_(H_0) (exists thin t <= T : "LLR"_t >= V) = alpha $
 
-No hay fórmula cerrada: se calcula enumerando numéricamente las trayectorias posibles bajo $H_0$ y ajustando $V$ hasta lograr ese $alpha$ (el paper itera por interpolación). Una vez tabulado para cada par $(alpha, T)$, nadie más necesita recalcularlo.
+No hay fórmula cerrada: se enumeran numéricamente las trayectorias bajo $H_0$ y se ajusta $V$ hasta ese $alpha$. Tabulado por $(alpha, T)$ una vez, no hace falta recalcularlo.
 
 == Valores críticos y ejemplo numérico
 
@@ -153,7 +179,7 @@ Para $alpha = 0.05$, algunos valores críticos de la Tabla 1 del paper:
 
 - $T=2$ → $V approx 3.05$
 - $T=10$ → $V approx 3.47$
-- $T=800$ (el caso de fiebre en Pediarix, más adelante) → $V approx 4.29$
+- $T=800$ (vigilancia larga, ≈2 años) → $V approx 4.29$
 
 A mayor $T$, mayor $V$: se permiten más chances de cruzarlo por azar, así que hace falta una señal más fuerte para mantener el mismo $alpha$.
 
@@ -161,62 +187,18 @@ Con $T=2$ y $mu_t=1$: si $c_t=4$, $"LLR"_t = (1-4)+4ln(4) approx 2.55$, todavía
 
 == Potencia y el trade-off de siempre
 
-La potencia depende del RR verdadero y de $T$ (cuánto se está dispuesto a vigilar).
+La potencia depende del RR verdadero y de $T$.
 
 - $T$ chico: se termina antes, pero cuesta detectar riesgos moderados.
-- $T$ grande: más potencia, pero hay que estar dispuesto a esperar más si la señal tarda.
+- $T$ grande: más potencia, pero hay que esperar más si la señal tarda.
 
-No es gratis: es el mismo trade-off de siempre entre tamaño de muestra y potencia, solo que acá se define en términos de eventos esperados bajo $H_0$ en vez de un $n$ fijo.
+El mismo trade-off de siempre entre muestra y potencia, definido en eventos esperados bajo $H_0$ en vez de un $n$ fijo. Como es vigilancia observacional, estirar $T$ casi solo cuesta cómputo.
 
-Como es vigilancia observacional (los datos se juntan igual, haya o no señal), estirar $T$ no cuesta mucho más que tiempo de cómputo.
+== Simulación / Ejemplo (Santi D.)
 
-== Y si no tenemos $mu_t$ confiable...
-
-A veces no hay una tasa basal esperada bien establecida. Ahí conviene comparar directamente tiempo expuesto contra tiempo no expuesto: un diseño pareado, en vez de Poisson.
-
-- autocontrolado: mismo individuo, ventana expuesta vs. no expuesta
-- con controles: individuos expuestos vs. no expuestos, pareados por edad/sexo
-
-Cada evento adverso es como tirar una moneda: cae del lado expuesto o del lado no expuesto. Sea $z$ la duración del período pareado no expuesto sobre la del expuesto (por ejemplo, $z=1$ para un pareo 1:1). Bajo $H_0$, $P("expuesto") = p = 1\/(z+1)$.
-
-Como ya no hay una tasa Poisson de la que depender, el límite de vigilancia ya no se mide en eventos esperados ($T$) sino en eventos observados en total ($N$).
-
-== MaxSPRT para datos binomiales
-
-Sea $n$ el total de eventos observados hasta el momento y $c_n <= n$ los que cayeron del lado expuesto. Igual que en el caso Poisson, se maximiza la verosimilitud sobre $"RR">1$ (estimador $hat("RR")=z c_n\/(n-c_n)$), y se llega a:
-
-$ "LLR"_n = c_n ln(c_n/n) + (n-c_n)ln((n-c_n)/n) - c_n ln(1/(z+1)) - (n-c_n) ln(z/(z+1)) $
-
-(si $z c_n\/(n-c_n) > 1$; si no, $"LLR"_n = 0$).
-
-Misma lógica que el caso Poisson —alternativa compuesta, maximización, tablas de valores críticos— pero con la binomial como distribución de base.
-
-== Volviendo a Pediarix, ahora con MaxSPRT
-
-Se aplica el MaxSPRT Poisson a los mismos datos, con $T$ = 800 eventos esperados para fiebre y 15 para síntomas neurológicos (≈2 años de vigilancia), $alpha=0.05$:
-
-- *Fiebre*: señal a las *13 semanas* (97 casos observados vs. 69.7 esperados, $hat("RR")=1.39$, $"LLR"=4.78$)
-- *Neurológicos*: señal a las *42 semanas* (15 casos vs. 5.5 esperados, $hat("RR")=2.7$, $"LLR"=5.51$)
-
-En ambos casos el LLR observado queda por encima del $V approx 4.29$ (fiebre) y $V approx 3.56$ (neurológicos) que corresponden a esos $T$ - coherente con la señal.
-
-Con $alpha=0.01$ o con $T$ más chico (≈3 meses) los resultados casi no cambian: 13 semanas para fiebre siempre, 32 a 42 semanas para neurológicos según el caso.
-
-== Pediarix: qué significan estos resultados
-
-Ya no hace falta elegir un RR de antemano ni justificar por qué se descartó tal o cual valor: el resultado no depende de una decisión arbitraria previa a mirar los datos.
-
-- *Fiebre*: a las 82 semanas el riesgo relativo observado fue 1.16 (16% de exceso). Es un efecto secundario ya conocido de Pediarix, así que no sorprende.
-- *Neurológicos*: el exceso de casos resultó estar ligado, al menos en parte, a un cambio en cómo se completaban los formularios de historia clínica - no necesariamente un efecto real de la vacuna.
-
-Una señal estadística pide una investigación epidemiológica, no la reemplaza. (En la práctica se haría un solo análisis con parámetros fijados de antemano; acá se muestran varios nada más para comparar métodos.)
-
-== Algunas cosas para tener en cuenta
-
-- Una señal estadística no es lo mismo que una relación causal probada: hay que investigarla clínicamente.
-- El sesgo depende mucho de qué grupo de comparación se use (histórico, pareado, autocontrol) - cada uno tiene sus propios problemas.
-- El método asume homogeneidad de Poisson o proporción fija conocida bajo $H_0$; si esos supuestos fallan, las señales pueden ser espurias.
-- MaxSPRT ya se usaba en producción en el momento de publicarse el paper (Vaccine Safety Datalink, CDC), no era solo una propuesta teórica.
+#align(center + horizon)[
+  #text(size: 24pt, fill: luma(150))[_Placeholder — simulación / ejemplo (Santi D.)_]
+]
 
 == Para llevarse
 
