@@ -58,6 +58,32 @@ first_crossing <- function(values, upper, lower = NULL) {
   list(decision = if (values[index] >= upper) "reject" else "accept", look = index)
 }
 
+sequential_decision_summary <- function(values, dates, upper, lower = NULL) {
+  if (length(values) != length(dates) || length(values) == 0L) {
+    stop("values and dates must have the same positive length", call. = FALSE)
+  }
+
+  crossing <- first_crossing(values, upper, lower)
+  has_decision <- !is.na(crossing$look)
+  rejected <- identical(crossing$decision, "reject")
+
+  list(
+    decision = crossing$decision,
+    decision_date = if (has_decision) dates[crossing$look] else as.Date(NA),
+    first_rejection = if (rejected) dates[crossing$look] else as.Date(NA),
+    crossing_index = if (rejected) as.integer(crossing$look) else NA_integer_,
+    crossing_value = if (rejected) values[crossing$look] else NA_real_
+  )
+}
+
+truncate_after_decision <- function(values, upper, lower = NULL) {
+  crossing <- first_crossing(values, upper, lower)
+  if (!is.na(crossing$look) && crossing$look < length(values)) {
+    values[seq.int(crossing$look + 1L, length(values))] <- NA_real_
+  }
+  values
+}
+
 calibration_reps <- function(alpha, requested_reps, expected_tail_events = 100L) {
   stopifnot(alpha > 0, alpha < 1, requested_reps >= 1, expected_tail_events >= 1)
   as.integer(max(requested_reps, ceiling(expected_tail_events / alpha)))
@@ -157,7 +183,7 @@ summarise_simulation <- function(simulations, method) {
     method = method,
     rejection_rate = mean(decisions == "reject"),
     early_acceptance_rate = mean(decisions == "accept"),
-    mean_stopping_look = mean(looks, na.rm = TRUE)
+    mean_rejection_look = mean(looks[decisions == "reject"], na.rm = TRUE)
   )
 }
 

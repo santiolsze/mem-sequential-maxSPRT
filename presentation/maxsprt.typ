@@ -8,6 +8,22 @@
 #let cMt = text(fill: aMU)[$mu_t$]
 #let cMi = text(fill: aMU)[$mu_i$]
 
+#let separador_seccion(titulo, detalle) = {
+  v(1fr)
+  align(center)[
+    #block(width: 78%)[
+      #line(length: 40%, stroke: 1.4pt + rgb("#2f6f9f"))
+      #v(14pt)
+      #text(size: 30pt, weight: "bold", fill: rgb("#111827"))[#titulo]
+      #v(8pt)
+      #text(size: 16pt, fill: rgb("#4b5563"))[#detalle]
+      #v(14pt)
+      #line(length: 40%, stroke: 1.4pt + rgb("#2f6f9f"))
+    ]
+  ]
+  v(1fr)
+}
+
 = MaxSPRT: vigilancia secuencial de seguridad de vacunas
 
 Un test de razón de verosimilitud secuencial con alternativa compuesta
@@ -93,7 +109,7 @@ El SPRT clásico obliga a fijar el $#cRR$ de la alternativa antes de ver los dat
 
 $ H_0: #cRR = 1 quad "vs." quad H_A: #cRR > 1 $
 
-Clave: se *monta sobre el mismo $"LLR"_t$ ya deducido*. En vez de un $#cRR$ fijo, se usa el $#cRR$ que maximiza la verosimilitud — estimado de los datos, no elegido a priori:
+Clave: se *apoya en el mismo $"LLR"_t$ ya deducido*. En vez de un $#cRR$ fijo, se usa el $#cRR$ que maximiza la verosimilitud — estimado de los datos, no elegido a priori:
 
 $ "LLR"_t = max_(#cRR > 1) [ (1-#cRR)#cMt + c_t ln(#cRR) ] $
 
@@ -137,7 +153,7 @@ El límite de vigilancia ya no se mide en eventos esperados ($T$) sino en evento
 
 == MaxSPRT binomial: la verosimilitud
 
-Sea $c_n$ de los $n$ eventos el número del lado expuesto. Condicional en $n$, $C_n$ es binomial (prob. $p$ de caer expuesto):
+Sea $c_n$ la cantidad de esos $n$ eventos que cae del lado expuesto. Condicional en $n$, $C_n$ es binomial (prob. $p$ de caer expuesto):
 
 $ P(C_n = c_n) = binom(n, c_n) p^(c_n) (1-p)^(n-c_n) $
 
@@ -165,7 +181,7 @@ $V$ controla el error de tipo I: el valor más chico tal que, bajo $H_0$, la pro
 
 $ P_(H_0) (exists thin t <= T : "LLR"_t >= V) = alpha $
 
-No hay fórmula cerrada: se enumeran numéricamente las trayectorias bajo $H_0$ y se ajusta $V$ hasta ese $alpha$. Tabulado por $(alpha, T)$ una vez, no hace falta recalcularlo.
+No hay fórmula cerrada: $alpha$ se calcula con una recursión numérica bajo $H_0$, y se ajusta $V$ hasta ese valor. Tabulado por $(alpha, T)$ una vez, no hace falta recalcularlo.
 
 == Valores críticos y ejemplo numérico
 
@@ -190,15 +206,165 @@ Con $T=2$ y $mu_t=1$: si $c_t=4$, $"LLR"_t = (1-4)+4ln(4) approx 2.55$, todavía
 La potencia depende del RR verdadero y de $T$.
 
 - $T$ chico: se termina antes, pero cuesta detectar riesgos moderados.
-- $T$ grande: más potencia, pero hay que esperar más si la señal tarda.
+- $T$ grande $arrow.r$ más chances de cruzar por azar $arrow.r$ $V$ tiene que ser más alto $arrow.r$ toma más tiempo acumular esa evidencia (sobre todo para riesgos moderados).
 
 El mismo trade-off de siempre entre muestra y potencia, definido en eventos esperados bajo $H_0$ en vez de un $n$ fijo. Como es vigilancia observacional, estirar $T$ casi solo cuesta cómputo.
 
-== Simulación / Ejemplo (Santi D.)
+== Sección
 
-#align(center + horizon)[
-  #text(size: 24pt, fill: luma(150))[_Placeholder — simulación / ejemplo (Santi D.)_]
+#separador_seccion[Por dentro: el cálculo exacto de $V$][Lambert W, la recursión y cómo se arma la Tabla 1 del paper]
+
+== Por dentro: ¿cómo se calcula $V$?
+
+¿Cómo se hace ese cálculo numérico, en la práctica?
+
+Entre eventos, $c_t$ queda fijo y #cMt crece:
+
+$ (partial "LLR"_t)/(partial #cMt) = 1 - c_t/#cMt < 0 quad "si " c_t > #cMt $
+
+*El rechazo solo puede pasar en el instante de un evento nuevo* — alcanza con mirar ahí.
+
+Dos herramientas para hacerlo exacto (no simulado):
+
+- *Función $W$ de Lambert*: resuelve $w e^w = z$; da el instante donde $n$ eventos cruzarían $V$.
+- *Incrementos independientes de Poisson*: lo que pasa en un tramo nuevo no depende de lo anterior.
+
+== Paso 1 — el instante de cruce $s_n$
+
+Para cada $n=1,2,3,...$ buscamos $s_n$ tal que, con exactamente $n$ eventos ahí, el LLR da justo $V$:
+
+$ (mu_(s_n) - n) + n ln(n/mu_(s_n)) = V $
+
+Despejando, la ecuación queda de la forma $w e^w=z$ (la definición de $W$), y resulta:
+
+$ mu_(s_n) = -n med W(-e^(-1-V\/n)) $
+
+Con esto, $s_1 < s_2 < s_3 < ...$ quedan calculados en forma cerrada — sin simular nada.
+
+== Lema: incrementos independientes de Poisson
+
+Sea $C_t$ un proceso de Poisson bajo $H_0$ (con #cMt conocida). Para $s < t$:
+
+$ C_t - C_s tilde "Poisson"(mu_t - mu_s), quad "independiente de " C_s $
+
+El conteo en un tramo nuevo no depende de lo que ya pasó — el proceso "no tiene memoria" entre tramos disjuntos.
+
+== Paso 2 — la recursión: ¿seguís vivo hasta $s_n$?
+
+$pi_n (k) := P(C_(s_n)=k med, "no rechazado hasta la etapa " n)$, para $k=0,...,n-1$.
+
+*Caso base*: $ pi_0 (0) = 1 $ (en $s_0=0$, $C_0=0$ con certeza).
+
+*Paso recursivo* — con $Delta_n = mu_(s_n)-mu_(s_(n-1))$, combinamos $pi_(n-1)$ con el incremento (Poisson($Delta_n$), independiente) y truncamos a $k<n$:
+
+$ pi_n (k) = sum_(j=0)^(k) pi_(n-1)(j) med P("incremento"=k-j), quad k=0,...,n-1 $
+
+Sea $Pi_n := sum_k pi_n (k)$ la probabilidad total de seguir vivo tras la etapa $n$ ($Pi_0=1$).
+
+== Paso 3 — sumar todo lo rechazado
+
+Acá entra $T$: define cuándo parar, $n_max := min{n : s_n >= T}$. Ahí el último tramo se achica para terminar justo en $T$ (no en $s_(n_max)$).
+
+Como $Pi_n$ solo puede bajar, lo rechazado en la etapa $n$ es $Pi_(n-1)-Pi_n$. Al sumar sobre todas las etapas, los términos intermedios se cancelan y queda:
+
+$ alpha(V,T) = sum_(n=1)^(n_max) (Pi_(n-1)-Pi_n) = 1 - Pi_(n_max) $
+
+Ejemplo con $V=2$, $T=3$:
+
+#align(center)[
+#text(size: 14pt)[
+#table(
+  columns: 4,
+  align: center,
+  stroke: 0.5pt + luma(200),
+  inset: 5pt,
+  [*n*], [*$s_n$*], [*$Pi_n$*], [*$1-Pi_n$*],
+  [1], [0.053], [0.9489], [0.0511],
+  [2], [0.317], [0.9210], [0.0790],
+  [3], [0.720], [0.9030], [0.0970],
+  [$dots.v$], [$dots.v$], [$dots.v$], [$dots.v$],
+  [8], [3.000 ($T$)], [0.8647], [*0.1353*],
+)
 ]
+]
+
+== Sección
+
+#separador_seccion[Y con miradas discretas, ¿qué pasa?][Del cálculo exacto continuo a $K$ miradas finitas, comparado por simulación]
+
+== Discretización: el experimento
+
+Hasta acá $V$ es exacto para vigilancia *continua*. En la práctica se mira cada tanto: $K$ miradas igualmente espaciadas en $#cMt$ acumulado, $#cMi = i T\/K$.
+
+Se deja el *mismo* $V$ continuo fijo — no se recalibra por $K$, porque recalibrar escondería el efecto que se quiere mostrar. Simulando muchas trayectorias con ese $V$, se mide:
+
+- $alpha$ empírico: fracción que cruza $V$ bajo $H_0$
+- potencia empírica: fracción que cruza $V$ bajo un $"RR"$ verdadero, contra la potencia continua exacta
+
+(con intervalos de Wilson al 95% para el error de simulación)
+
+== Discretización: es conservadora
+
+Con $T=50$, $alpha$ nominal $=0.05$, $"RR"=1.5$ ($V=3.82$, potencia continua $=80.3%$):
+
+#align(center)[
+#text(size: 14pt)[
+#table(
+  columns: 3,
+  align: center,
+  stroke: 0.5pt + luma(200),
+  inset: 5pt,
+  [*$K$ miradas*], [*$alpha$ empírico*], [*potencia empírica*],
+  [1], [0.3%], [69.6%],
+  [12], [1.5%], [76.3%],
+  [52], [2.3%], [77.9%],
+  [365], [3.4%], [79.5%],
+  [1000], [3.9%], [79.3%],
+  [$"continuo"$], [*5.0%*], [*80.3%*],
+)
+]
+]
+
+Con pocas miradas, $alpha$ real queda muy por debajo del nominal — y la potencia también cae. A medida que $K$ crece, ambos suben *desde abajo* hacia el continuo, sin superarlo nunca: se puede explorar interactivamente en la pestaña "Discretización" de la app.
+
+== Sección
+
+#separador_seccion[¿Y los datos reales de la demo?][Qué series se muestran en la app, de dónde salen, y qué tan fuerte es la evidencia]
+
+== Las series reales de la demo
+
+Datos públicos, no simulados — 120 meses (2016-2025) por serie, cada una contra su propio comparador contemporáneo:
+
+#align(center)[
+#text(size: 14pt)[
+#table(
+  columns: 4,
+  align: (left, left, right, right),
+  stroke: 0.5pt + luma(200),
+  inset: 6pt,
+  [*Serie*], [*Fuente*], [*Observado*], [*Esperado*],
+  [ELIQUIS / Hemorragia], [FAERS (openFDA)], [16.908], [5.074],
+  [HPV9 / Síncope], [VAERS], [2.249], [2.467],
+  [MENB / Pirexia], [VAERS], [1.482], [731],
+)
+]
+]
+
+El esperado nunca es una tasa clínica: es siempre la fracción de reporte de un comparador del mismo mes (no-ELIQUIS para la primera; MNQ, la vacuna meningocócica de la misma visita adolescente, para las otras dos) aplicada al volumen de reportes de la serie de interés.
+
+== Por qué esto pesa menos que el ejemplo del paper
+
+El paper usa el *Vaccine Safety Datalink*: ≈650.000 chicos, vacunación *registrada automáticamente* (denominador real de dosis) y diagnósticos de *historias clínicas* (evento real, no autorreportado).
+
+FAERS y VAERS son *reporte espontáneo*: sin denominador real de dosis ni de expuestos — observado y esperado son ambos *conteos de reportes*, no incidencia clínica.
+
+Eso exige supuestos extra:
+
+- el comparador (no-ELIQUIS, o MNQ) reporta a una tasa parecida a la real
+- el pareo por edad (MNQ) controla razonablemente los confusores
+- comparar a nivel de reporte aproxima una comparación a nivel de paciente
+
+Mismo test, MaxSPRT — pero acá ilustra la mecánica del método, no prueba causalidad.
 
 == Para llevarse
 

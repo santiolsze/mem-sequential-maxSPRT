@@ -69,3 +69,67 @@
 - The monthly Poisson calibration chooses a discrete critical value with
   simulated tail probability at most alpha and uses at least `100 / alpha`
   null simulations (100,000 for alpha = 0.001).
+- 2026-07-13: Added an exact, deterministic base-R replication of Poisson
+  MaxSPRT Tables 1-3 from `paper.pdf` at
+  `experimentacion/scripts/replicate_paper_tables_1_3.R`. It implements both
+  real Lambert W branches with `uniroot()`, uses the principal branch for the
+  rejection crossing time, and propagates nonabsorbed Poisson probabilities at
+  event times. Run it from the repository root with
+  `Rscript experimentacion/scripts/replicate_paper_tables_1_3.R`.
+- Replicated table and comparison CSVs are written under
+  `experimentacion/results/paper_tables/`. All 523 compared cells pass the
+  project tolerance of less than one unit in the paper's last displayed
+  decimal. Three cells differ by about 0.5-0.6 units in their last displayed
+  decimal; tighter roots and an independent direct convolution confirmed these
+  are paper-level numerical/rounding differences rather than implementation
+  errors.
+- 2026-07-15: Added a dataset-independent `Discretizacion` Shiny tab design and
+  implementation. For fixed `T`, nominal alpha, and RR, it calibrates one exact
+  continuous Poisson MaxSPRT boundary and compares continuous alpha/power with
+  Monte Carlo estimates observed only at `K` equally spaced expected-count
+  looks `mu_k = kT/K`. The continuous boundary is deliberately not recalibrated
+  for each `K`, so the conservative effect of sparse looks remains visible.
+- Discretization simulation helpers live in
+  `experimentacion/shiny/R/discretization.R`; focused tests are in
+  `experimentacion/shiny/tests/testthat/test-discretization.R`. The experiment
+  has its own Shiny inputs and random seeds and does not access FAERS, VAERS,
+  Parquet data, presets, or real-series reactives.
+- The discretization selector includes K values through 10,000. K=1,000 is
+  selected by default; 2,500, 5,000, and 10,000 are optional. Monte Carlo
+  repetition choices include 1,000, 5,000, 10,000, 20,000, and 50,000. When
+  K=10,000 is selected, requested repetitions are capped at 100,000 and the UI
+  explains any adjustment, since runtime is proportional to repetitions times
+  total looks.
+- In the `Potencia simulada` table, `Tiempo medio hasta el rechazo (meses)` is
+  conditional on rejection for every method. Early acceptances and simulations
+  without a decision are excluded from that average; each look is one month in
+  the retained monthly profile.
+- 2026-07-15: Removed the simulated binomial tab, its sidebar controls, and its
+  Shiny server outputs from the active app. The reusable binomial functions and
+  mathematical tests remain in `R/sequential.R` and the test suite.
+- 2026-07-15: The real-data sequential plot labels the monthly Monte Carlo
+  MaxSPRT boundary and the common theoretical Wald upper boundary for the two
+  classical SPRTs. It marks each valid first rejection and includes a table of
+  method, boundary, and first rejection month. A later upper crossing is not
+  counted when a classical SPRT already accepted H0 at its lower boundary.
+- 2026-07-15: The Poisson diagnostics tab now explains that it assesses whether
+  monthly variance is compatible with the expected Poisson mean and whether
+  residuals show temporal dependence. It explicitly connects overdispersion or
+  autocorrelation with loss of the nominal MaxSPRT alpha guarantee.
+- 2026-07-15: Removed the `Metodo` tab and its guide entry from the active Shiny
+  interface. Statistical implementations and documentation elsewhere remain.
+- 2026-07-15: Added alpha 0.10 to both the general Shiny alpha control and the
+  independent discretization experiment control.
+- 2026-07-15: Real-data LLR trajectories are truncated immediately after their
+  first valid sequential decision: rejection for MaxSPRT, and rejection or
+  early H0 acceptance for each classical SPRT.
+- The real-data decision table reports `Rechaza en YYYY-MM` when MaxSPRT
+  signals. Otherwise it reports the formal surveillance completion as
+  `Finaliza sin rechazo al alcanzar T = ... en YYYY-MM`, where T is the final
+  cumulative expected count under H0 rather than an observed-event limit.
+- 2026-07-15: Added `Mes inicial de vigilancia` to the Shiny sidebar. It filters
+  the chosen real series and rebuilds cumulative observed/expected counts, RR,
+  MaxSPRT LLR, Monte Carlo boundary, sequential decisions, remaining T, plots,
+  monthly table, simulation profile, and Poisson diagnostics from that month.
+  The selector uses YYYY-MM labels, defaults to the first available month, and
+  refreshes when the real-data preset changes.
