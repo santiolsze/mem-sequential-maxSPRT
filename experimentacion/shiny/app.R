@@ -71,10 +71,6 @@ ui <- page_sidebar(
     actionButton("run_power", "Simular potencia", class = "btn-primary")
   ),
   tags$head(includeCSS(file.path(app_dir, "www", "app.css"))),
-  tags$div(
-    class = "caveat-strip",
-    "FAERS y VAERS son sistemas de reportes espontaneos. Los paneles reales describen reportes; no estiman incidencia ni causalidad."
-  ),
   navset_tab(
     nav_panel(
       "Guia",
@@ -84,7 +80,7 @@ ui <- page_sidebar(
           card_header("Uso basico"),
           tags$ol(
             tags$li("Elegi una serie real en la barra lateral (Eliquis, HPV9 o MENB)."),
-            tags$li("Elegi el mes inicial: los acumulados, fronteras y diagnosticos se recalculan desde ese mes."),
+            tags$li("Elegi el mes inicial: los acumulados y las fronteras se recalculan desde ese mes."),
             tags$li("Ajusta Alpha (tasa de falsos positivos nominal del MaxSPRT) y Beta (para el SPRT clasico)."),
             tags$li("Defini los RR supuestos por los dos SPRT clasicos: son sus hipotesis alternativas fijas."),
             tags$li("La pestana 'Datos reales' se recalcula sola al cambiar cualquiera de esos parametros."),
@@ -95,7 +91,7 @@ ui <- page_sidebar(
           card_header("Que mirar en cada pestana"),
           tags$ul(
             tags$li(tags$strong("Datos reales: "), "observados vs esperados, trayectorias LLR (MaxSPRT y SPRT clasico) y la tabla mensual."),
-            tags$li(tags$strong("Diagnostico Poisson: "), "chequea si el nulo Poisson simple es razonable para la serie elegida."),
+            tags$li(tags$strong("Binomial MENB vs MNQ: "), "compara la proporcion de reportes con Pyrexia entre ambas vacunas, condicionando por mes."),
             tags$li(tags$strong("Potencia simulada: "), "ilustra formalmente alpha, beta, V y el stopping time con datos simulados."),
             tags$li(tags$strong("Discretizacion: "), "compara alpha y potencia continuos exactos contra observaciones en una cantidad finita de looks, sin usar datos reales.")
           )
@@ -151,6 +147,36 @@ ui <- page_sidebar(
       card(card_header("Serie mensual"), DTOutput("monthly_table"))
     ),
     nav_panel(
+      "Binomial MENB vs MNQ",
+      tags$div(
+        class = "tab-intro",
+        tags$h4("Comparacion fija de Pyrexia en VAERS"),
+        tags$p(
+          "Contrasta si la proporcion de reportes con Pyrexia es mayor para MENB que para MNQ. En cada mes condiciona por el total de reportes de Pyrexia y ajusta la probabilidad nula por el volumen de reportes de cada vacuna."
+        ),
+        tags$p(
+          "La frontera Monte Carlo controla alpha condicionalmente a esos margenes mensuales. Este analisis describe desproporcionalidad de reporte; no estima incidencia, riesgo clinico ni causalidad."
+        )
+      ),
+      uiOutput("binomial_summary"),
+      layout_columns(
+        card(
+          card_header("Proporcion mensual de reportes con Pyrexia"),
+          plotlyOutput("binomial_proportion_plot", height = "340px")
+        ),
+        card(
+          card_header("MaxSPRT binomial condicional"),
+          plotlyOutput("binomial_llr_plot", height = "340px"),
+          uiOutput("binomial_decision")
+        ),
+        col_widths = c(6, 6)
+      ),
+      card(
+        card_header("Comparacion mensual MENB vs MNQ"),
+        DTOutput("binomial_monthly_table")
+      )
+    ),
+    nav_panel(
       "Potencia simulada",
       tags$p(class = "tab-intro", "Simulacion Poisson con esperado conocido. Este es el panel donde se ilustran formalmente V, alpha, beta y el efecto de elegir alternativas clasicas altas o bajas."),
       uiOutput("power_results")
@@ -176,7 +202,7 @@ ui <- page_sidebar(
           ),
           checkboxGroupInput(
             "disc_looks", "Cantidad de looks K",
-            choices = c(1, 2, 4, 12, 24, 52, 100, 365, 1000, 2500, 5000, 10000),
+            choices = c(1, 2, 4, 12, 24, 52, 100, 365, 1000, 2500, 5000, 10000, 25000, 50000),
             selected = c(1, 2, 4, 12, 24, 52, 100, 365, 1000)
           ),
           selectInput(
@@ -217,33 +243,41 @@ ui <- page_sidebar(
           DTOutput("discretization_table")
         )
       )
-    ),
-    nav_panel(
-      "Diagnostico Poisson",
-      tags$div(
-        class = "tab-intro",
-        tags$h4("Objetivo del diagnostico"),
-        tags$p(
-          "El MaxSPRT Poisson supone que, bajo la hipotesis nula, los eventos observados en cada mes siguen una distribucion Poisson con la media esperada indicada. Esto implica que la variabilidad mensual deberia ser aproximadamente igual a la media y que, una vez considerada esa media, los residuos no deberian presentar dependencia temporal importante."
-        ),
-        tags$p(
-          "Esta pestana evalua si esos supuestos son razonables para la serie seleccionada. La dispersion de Pearson permite detectar variabilidad mayor o menor que la esperada por un modelo Poisson; la correlacion de los residuos permite detectar patrones que persisten entre meses."
-        ),
-        tags$p(
-          "Si hay sobredispersion o dependencia temporal fuerte, la frontera calculada bajo un modelo Poisson puede no controlar correctamente el alfa nominal. En ese caso, un cruce del MaxSPRT debe interpretarse como una demostracion del mecanismo y no como evidencia estadistica formal con una tasa garantizada de falsos positivos."
-        )
-      ),
-      uiOutput("gof_summary"),
-      layout_columns(
-        card(card_header("Residuos de Pearson por mes"), plotOutput("residual_plot", height = "340px")),
-        card(card_header("Conclusion sobre el supuesto Poisson"), uiOutput("diagnostic_interpretation")),
-        col_widths = c(7, 5)
-      )
     )
   )
 )
 
 app_server <- function(input, output, session) {
+  binomial_series <- reactive({
+    load_menb_mnq_pyrexia_binomial(processed_root)
+  })
+
+  binomial_analysis <- reactive({
+    series <- binomial_series()
+    stratified_binomial_maxsprt(
+      series$target_events,
+      series$comparator_events,
+      series$target_reports,
+      series$comparator_reports
+    )
+  })
+
+  binomial_boundary <- reactive({
+    series <- binomial_series()
+    alpha <- as.numeric(or_else(input$alpha, "0.05"))
+    calibrate_stratified_binomial_boundary(
+      total_events = series$target_events + series$comparator_events,
+      target_reports = series$target_reports,
+      comparator_reports = series$comparator_reports,
+      alpha = alpha,
+      reps = calibration_reps(
+        alpha,
+        as.integer(or_else(input$simulation_reps, "1000"))
+      ),
+      seed = 20260715L
+    )
+  })
+
   raw_series <- reactive({
     load_real_series(or_else(input$preset, "eliquis"), processed_root)
   })
@@ -498,39 +532,109 @@ app_server <- function(input, output, session) {
     )
   })
 
-  output$gof_summary <- renderUI({
-    gof <- poisson_gof(selected_series())
-    tags$div(
-      class = "metric-grid",
-      metric("Deviance", round(gof$deviance, 1)),
-      metric("Pearson", round(gof$pearson, 1)),
-      metric("Dispersion", round(gof$dispersion, 2), "Poisson ideal: cerca de 1"),
-      metric("Correlacion lag-1", round(gof$lag1_residual_correlation, 2))
+  output$binomial_summary <- renderUI({
+    series <- binomial_series()
+    analysis <- binomial_analysis()
+    bound <- binomial_boundary()
+    target_events <- sum(series$target_events)
+    comparator_events <- sum(series$comparator_events)
+    target_reports <- sum(series$target_reports)
+    comparator_reports <- sum(series$comparator_reports)
+    tagList(
+      tags$div(
+        class = "metric-grid",
+        metric("MENB: reportes", format(target_reports, big.mark = ",")),
+        metric("MNQ: reportes", format(comparator_reports, big.mark = ",")),
+        metric(
+          "MENB: Pyrexia",
+          sprintf("%s (%.1f%%)", format(target_events, big.mark = ","), 100 * target_events / target_reports)
+        ),
+        metric(
+          "MNQ: Pyrexia",
+          sprintf("%s (%.1f%%)", format(comparator_events, big.mark = ","), 100 * comparator_events / comparator_reports)
+        ),
+        metric("RR ajustado", sprintf("%.2f", tail(analysis$rr_hat, 1)), "razon relativa de reporte"),
+        metric("Frontera V", sprintf("%.2f", bound$critical_value), paste(bound$reps, "simulaciones nulas"))
+      )
     )
   })
 
-  output$residual_plot <- renderPlot({
-    series <- selected_series()
-    residuals <- (series$observed - series$expected) / sqrt(series$expected)
-    plot_data <- data.frame(month_date = series$month_date, residual = residuals)
-    ggplot(plot_data, aes(month_date, residual)) +
-      geom_hline(yintercept = c(-2, 0, 2), linetype = c("dashed", "solid", "dashed"), color = c("#94a3b8", "#334155", "#94a3b8")) +
-      geom_line(color = "#0e7490", linewidth = 0.7) +
-      geom_point(color = "#0e7490", size = 1.4) +
-      labs(x = NULL, y = "Residuo de Pearson") +
-      theme_minimal(base_size = 12)
+  output$binomial_proportion_plot <- renderPlotly({
+    series <- binomial_series()
+    plot_data <- rbind(
+      data.frame(month_date = series$month_date, proportion = series$target_proportion, vaccine = "MENB"),
+      data.frame(month_date = series$month_date, proportion = series$comparator_proportion, vaccine = "MNQ")
+    )
+    plot <- ggplot(plot_data, aes(month_date, proportion, color = vaccine)) +
+      geom_line(linewidth = 0.75) +
+      scale_color_manual(values = c(MENB = "#0e7490", MNQ = "#b45309")) +
+      scale_y_continuous(labels = scales::label_percent(accuracy = 1)) +
+      labs(x = NULL, y = "Pyrexia / reportes", color = NULL) +
+      theme_minimal(base_size = 12) + theme(legend.position = "top")
+    ggplotly(plot, tooltip = c("x", "y", "colour"))
   })
 
-  output$diagnostic_interpretation <- renderUI({
-    gof <- poisson_gof(selected_series())
-    diagnostic_failure <- gof$dispersion > 1.5 ||
-      (!is.na(gof$lag1_residual_correlation) &&
-        abs(gof$lag1_residual_correlation) > 0.25)
-    if (isTRUE(diagnostic_failure)) {
-      tags$p(class = "diagnostic-warning", "El nulo Poisson simple no describe bien esta serie. El cruce de un umbral se debe interpretar como demostracion mecanica, no como una garantia formal de alpha.")
-    } else {
-      tags$p("El ajuste Poisson simple no muestra una desviacion grande en este resumen. Sigue siendo un analisis de reportes, no de incidencia clinica.")
+  output$binomial_llr_plot <- renderPlotly({
+    series <- binomial_series()
+    analysis <- binomial_analysis()
+    bound <- binomial_boundary()
+    crossing <- first_crossing(analysis$llr, bound$critical_value)
+    plot_data <- data.frame(
+      month_date = series$month_date,
+      llr = truncate_after_decision(analysis$llr, bound$critical_value)
+    )
+    plot <- ggplot(plot_data, aes(month_date, llr)) +
+      geom_hline(yintercept = bound$critical_value, linetype = "dashed", color = "#b91c1c") +
+      geom_line(color = "#0e7490", linewidth = 0.85) +
+      annotate(
+        "text", x = max(series$month_date), y = bound$critical_value,
+        label = sprintf("V = %.2f", bound$critical_value),
+        hjust = 1, vjust = -0.4, color = "#334155", size = 3.2
+      ) +
+      labs(x = NULL, y = "LLR acumulado") +
+      theme_minimal(base_size = 12)
+    if (!is.na(crossing$look)) {
+      plot <- plot + geom_point(
+        data = plot_data[crossing$look, , drop = FALSE],
+        color = "#b91c1c", size = 3
+      )
     }
+    ggplotly(plot, tooltip = c("x", "y"))
+  })
+
+  output$binomial_decision <- renderUI({
+    series <- binomial_series()
+    analysis <- binomial_analysis()
+    bound <- binomial_boundary()
+    crossing <- first_crossing(analysis$llr, bound$critical_value)
+    outcome <- if (crossing$decision == "reject") {
+      sprintf("Rechaza H0 por primera vez en %s.", format(series$month_date[crossing$look], "%Y-%m"))
+    } else {
+      sprintf("Finaliza sin rechazo al alcanzar N = %s eventos de Pyrexia.", format(sum(series$target_events + series$comparator_events), big.mark = ","))
+    }
+    tags$p(
+      class = "diagnostic-warning",
+      outcome,
+      " El alfa es condicional a los margenes mensuales observados; la conclusion se refiere a proporciones de reportes VAERS."
+    )
+  })
+
+  output$binomial_monthly_table <- renderDT({
+    series <- binomial_series()
+    analysis <- binomial_analysis()
+    display <- data.frame(
+      Mes = format(series$month_date, "%Y-%m"),
+      `Reportes MENB` = series$target_reports,
+      `Pyrexia MENB` = series$target_events,
+      `% MENB` = sprintf("%.1f%%", 100 * series$target_proportion),
+      `Reportes MNQ` = series$comparator_reports,
+      `Pyrexia MNQ` = series$comparator_events,
+      `% MNQ` = sprintf("%.1f%%", 100 * series$comparator_proportion),
+      `RR ajustado acumulado` = round(analysis$rr_hat, 3),
+      `LLR acumulado` = round(analysis$llr, 3),
+      check.names = FALSE
+    )
+    datatable(display, rownames = FALSE, options = list(pageLength = 10, dom = "tip"))
   })
 
   simulations <- eventReactive(input$run_power, {
@@ -610,7 +714,11 @@ app_server <- function(input, output, session) {
     if (reps < requested_reps) {
       messages <- c(messages, list(tags$p(
         class = "diagnostic-warning",
-        "Con K = 10000, las replicas se limitan automaticamente a 100,000 para mantener un tiempo interactivo razonable."
+        if (max(looks) >= 25000) {
+          "Con K >= 25000, las replicas se limitan automaticamente a 5,000 para mantener un tiempo interactivo razonable."
+        } else {
+          "Con K >= 10000, las replicas se limitan automaticamente a 100,000 para mantener un tiempo interactivo razonable."
+        }
       )))
     }
     if (is.finite(workload) && workload > 5e6) {

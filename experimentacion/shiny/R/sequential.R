@@ -202,6 +202,119 @@ binomial_maxsprt_llr <- function(exposed_cases, total_cases, matching_ratio = 1)
   result
 }
 
+stratified_binomial_profile <- function(total_events, p0, target_event_totals) {
+  cumulative_total <- sum(total_events)
+  cumulative_target <- as.integer(target_event_totals)
+  expected_target <- sum(total_events * p0)
+  null_log_probability <- sum(total_events * log(p0))
+
+  llr <- numeric(length(cumulative_target))
+  rr_hat <- rep(1, length(cumulative_target))
+  above_null <- cumulative_target > expected_target
+
+  for (index in which(above_null)) {
+    target_total <- cumulative_target[index]
+    if (target_total == cumulative_total) {
+      llr[index] <- -null_log_probability
+      rr_hat[index] <- Inf
+      next
+    }
+
+    score <- function(theta) {
+      target_total - sum(total_events * plogis(qlogis(p0) + theta))
+    }
+    upper <- 1
+    while (score(upper) > 0 && upper < 32) {
+      upper <- upper * 2
+    }
+    theta_hat <- uniroot(score, interval = c(0, upper), tol = 1e-10)$root
+    log_normalizer <- log1p(p0 * expm1(theta_hat))
+    llr[index] <- theta_hat * target_total - sum(total_events * log_normalizer)
+    rr_hat[index] <- exp(theta_hat)
+  }
+
+  list(llr = llr, rr_hat = rr_hat)
+}
+
+stratified_binomial_maxsprt <- function(
+  target_events,
+  comparator_events,
+  target_reports,
+  comparator_reports
+) {
+  lengths <- lengths(list(
+    target_events, comparator_events, target_reports, comparator_reports
+  ))
+  if (length(unique(lengths)) != 1L || lengths[1] == 0L) {
+    stop("all inputs must have the same positive length", call. = FALSE)
+  }
+  if (any(!is.finite(c(
+    target_events, comparator_events, target_reports, comparator_reports
+  ))) || any(target_events < 0) || any(comparator_events < 0) ||
+      any(target_reports <= 0) || any(comparator_reports <= 0) ||
+      any(target_events > target_reports) ||
+      any(comparator_events > comparator_reports)) {
+    stop("counts and report margins must be valid", call. = FALSE)
+  }
+
+  total_events <- target_events + comparator_events
+  p0 <- target_reports / (target_reports + comparator_reports)
+  llr <- numeric(length(total_events))
+  rr_hat <- rep(1, length(total_events))
+  cumulative_target <- cumsum(target_events)
+
+  for (look in seq_along(total_events)) {
+    profile <- stratified_binomial_profile(
+      total_events[seq_len(look)], p0[seq_len(look)], cumulative_target[look]
+    )
+    llr[look] <- profile$llr
+    rr_hat[look] <- profile$rr_hat
+  }
+
+  list(llr = llr, rr_hat = rr_hat, p0 = p0)
+}
+
+calibrate_stratified_binomial_boundary <- function(
+  total_events,
+  target_reports,
+  comparator_reports,
+  alpha,
+  reps = 5000L,
+  seed = 20260715L
+) {
+  if (length(total_events) == 0L ||
+      length(target_reports) != length(total_events) ||
+      length(comparator_reports) != length(total_events) ||
+      any(total_events < 0) || any(target_reports <= 0) ||
+      any(comparator_reports <= 0) || alpha <= 0 || alpha >= 1 || reps < 100) {
+    stop("invalid conditional binomial calibration inputs", call. = FALSE)
+  }
+
+  p0 <- target_reports / (target_reports + comparator_reports)
+  null_maxima <- with_seed(seed, {
+    maxima <- numeric(reps)
+    cumulative_target <- integer(reps)
+    for (look in seq_along(total_events)) {
+      cumulative_target <- cumulative_target + rbinom(
+        reps, size = total_events[look], prob = p0[look]
+      )
+      possible_targets <- 0:sum(total_events[seq_len(look)])
+      profile <- stratified_binomial_profile(
+        total_events[seq_len(look)], p0[seq_len(look)], possible_targets
+      )
+      maxima <- pmax(maxima, profile$llr[cumulative_target + 1L])
+    }
+    maxima
+  })
+
+  list(
+    critical_value = conservative_critical_value(null_maxima, alpha),
+    null_maxima = null_maxima,
+    reps = reps,
+    alpha = alpha
+  )
+}
+
 simulate_binomial_trajectory <- function(total_cases, matching_ratio, true_rr, seed = 20260711L) {
   stopifnot(total_cases > 1, matching_ratio %in% c(1, 2, 3), true_rr > 0)
   exposed_probability <- true_rr / (true_rr + matching_ratio)

@@ -4,7 +4,7 @@
 
 Agregar a la app Shiny una pestaña fija que compare MENB con MNQ para Pyrexia mediante un MaxSPRT binomial condicional. El estimando es la proporción relativa de reportes VAERS con Pyrexia, no la incidencia clínica entre personas vacunadas.
 
-También se corregirá la presentación para dejar claro que, en el diseño binomial del paper, la probabilidad nula de que un evento caiga del lado expuesto es `1 / (z + 1)` y solo vale `1/2` cuando `z = 1`. El horizonte binomial se denotará por `N`, y la frontera se describirá como dependiente de `alpha`, `N` y `z`.
+También se corregirá la presentación para dejar claro que, en el diseño binomial del paper, la probabilidad nula de que un evento caiga del lado expuesto es `1 / (z + 1)` y solo vale `1/2` cuando `z = 1`. El horizonte binomial se denotará por `N`, y la frontera se describirá como dependiente de `alpha`, `N` y `z`. La sección numérica posterior conservará `T` porque vuelve al caso Poisson, pero ese regreso quedará rotulado explícitamente.
 
 ## Modelo estadístico
 

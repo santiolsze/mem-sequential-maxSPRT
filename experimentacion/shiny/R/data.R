@@ -154,6 +154,23 @@ load_real_series <- function(id, processed_root) {
   )
 }
 
+load_menb_mnq_pyrexia_binomial <- function(processed_root) {
+  series <- load_vaers_series(
+    "MENB", "Pyrexia", "MENB vs MNQ / Pyrexia", processed_root,
+    comparator_vax_type = "MNQ"
+  )
+  data.frame(
+    month_date = series$month_date,
+    target_reports = series$denominator,
+    comparator_reports = series$denominator_comparator,
+    target_events = series$events_target,
+    comparator_events = series$events_comparator,
+    target_proportion = series$events_target / series$denominator,
+    comparator_proportion = series$events_comparator /
+      series$denominator_comparator
+  )
+}
+
 poisson_gof <- function(series) {
   observed <- series$observed
   expected <- series$expected

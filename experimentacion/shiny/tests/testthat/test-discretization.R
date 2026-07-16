@@ -21,12 +21,15 @@ test_that("Wilson intervals remain valid at binomial extremes", {
   expect_equal(unname(all[2]), 1, tolerance = 1e-12)
 })
 
-test_that("very fine grids cap Monte Carlo repetitions at 100000", {
+test_that("very fine grids cap Monte Carlo repetitions according to workload", {
   source(module_path, local = environment())
 
   expect_equal(discretization_effective_reps(c(1, 1000), 20000), 20000L)
   expect_equal(discretization_effective_reps(c(1, 10000), 50000), 50000L)
   expect_equal(discretization_effective_reps(c(1, 10000), 200000), 100000L)
+  expect_equal(discretization_effective_reps(c(1, 25000), 20000), 5000L)
+  expect_equal(discretization_effective_reps(c(1, 50000), 50000), 5000L)
+  expect_equal(discretization_effective_reps(c(1, 50000), 1000), 1000L)
 })
 
 test_that("discrete crossing simulation is reproducible", {

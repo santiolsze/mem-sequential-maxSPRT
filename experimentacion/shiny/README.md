@@ -36,9 +36,11 @@ Rscript experimentacion/scripts/fetch_openfda_eliquis_comparator.R
   observed and expected counts, LLR paths, sequential decisions, the remaining
   horizon `T`, and the monthly Monte Carlo boundary are all recomputed from
   that point.
-- **Diagnostico Poisson** reports deviance, Pearson dispersion, residual
-  autocorrelation, and the monthly Pearson residuals for the selected simple
-  null model over the same selected surveillance period.
+- **Binomial MENB vs MNQ** is a fixed 2016--2025 comparison of the proportion
+  of VAERS reports containing Pyrexia. It conditions on the monthly total of
+  Pyrexia reports, adjusts the null allocation for each vaccine's monthly
+  report volume, fits one common reporting RR above one, and calibrates its
+  monthly sequential boundary by conditional Monte Carlo.
 - **Potencia simulada** uses generated Poisson trajectories with known expected
   counts. This is the formal illustration of MaxSPRT, classical SPRT, `alpha`,
   `beta`, the critical value, and stopping time.
@@ -47,9 +49,9 @@ Rscript experimentacion/scripts/fetch_openfda_eliquis_comparator.R
   `K` equally spaced cumulative-expected-count looks, `mu_k = kT/K`. It compares
   empirical alpha and power, with Wilson 95% intervals, against their exact
   continuous references as `K` increases. Available grids extend through
-  `K = 10000`; values above 1000 are optional because runtime grows with the
-  total number of simulated looks. Selecting `K = 10000` caps the effective
-  Monte Carlo repetitions at 100,000. The repetition selector offers 1,000,
+  `K = 50000`; values above 1000 are optional because runtime grows with the
+  total number of simulated looks. Selecting `K >= 25000` caps the effective
+  Monte Carlo repetitions at 5,000. The repetition selector offers 1,000,
   5,000, 10,000, 20,000, and 50,000 simulations per scenario.
 ## Interpretation
 
@@ -58,7 +60,13 @@ people or administered doses. The real-data panels are useful for method
 mechanics and diagnostics, but do not estimate incidence or establish causality.
 For the shipped real-data presets, expected counts are estimated from report
 patterns; the nominal Poisson MaxSPRT error rate is therefore not a formal
-guarantee. The diagnostics tab makes this limitation visible.
+guarantee.
+
+The fixed binomial tab has a narrower formal interpretation: conditional on
+the observed monthly Pyrexia totals and MENB/MNQ report margins, its simulated
+boundary controls the sequential false-positive probability for equality of
+reporting proportions. It does not turn VAERS report counts into administered
+dose denominators and therefore does not compare clinical incidence.
 
 The discretization tab does not read FAERS, VAERS, Parquet files, or any real
 series. Its continuous boundary and power come from the exact event-time

@@ -63,3 +63,25 @@ test_that("one-month Poisson diagnostic has no lag correlation", {
 
   expect_true(is.na(gof$lag1_residual_correlation))
 })
+
+test_that("fixed MENB MNQ Pyrexia binomial series preserves report margins", {
+  source(file.path("..", "..", "R", "sequential.R"))
+  source(file.path("..", "..", "R", "data.R"))
+
+  processed_root <- file.path("..", "..", "..", "data", "processed")
+  series <- load_menb_mnq_pyrexia_binomial(processed_root)
+  poisson_series <- load_real_series("menb_pyrexia", processed_root)
+
+  expect_equal(nrow(series), 120L)
+  expect_true(all(diff(series$month_date) > 0))
+  expect_true(all(series$target_reports > 0))
+  expect_true(all(series$comparator_reports > 0))
+  expect_true(all(series$target_events >= 0))
+  expect_true(all(series$comparator_events >= 0))
+  expect_true(all(series$target_events <= series$target_reports))
+  expect_true(all(series$comparator_events <= series$comparator_reports))
+  expect_equal(series$target_reports, poisson_series$denominator)
+  expect_equal(series$comparator_reports, poisson_series$denominator_comparator)
+  expect_equal(series$target_events, poisson_series$events_target)
+  expect_equal(series$comparator_events, poisson_series$events_comparator)
+})

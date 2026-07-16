@@ -28,8 +28,21 @@ test_that("start month restarts every cumulative real-data calculation", {
 
     session$setInputs(start_month = "2025-12-01")
     expect_equal(nrow(selected_series()), 1L)
-    expect_true(all(nzchar(output$diagnostic_interpretation)))
   })
+})
+
+test_that("the app does not expose the Poisson diagnostics tab", {
+  source(file.path("..", "..", "app.R"), local = TRUE)
+
+  ui_text <- as.character(ui)
+  expect_false(grepl("Diagnostico Poisson", ui_text, fixed = TRUE))
+  expect_false(grepl("gof_summary", ui_text, fixed = TRUE))
+  expect_false(grepl("residual_plot", ui_text, fixed = TRUE))
+  expect_false(grepl("diagnostic_interpretation", ui_text, fixed = TRUE))
+  expect_false(grepl(
+    "FAERS y VAERS son sistemas de reportes espontaneos", ui_text,
+    fixed = TRUE
+  ))
 })
 
 test_that("the app exposes an independent discretization experiment", {
@@ -43,8 +56,11 @@ test_that("the app exposes an independent discretization experiment", {
   expect_match(ui_text, 'value="2500"', fixed = TRUE)
   expect_match(ui_text, 'value="5000"', fixed = TRUE)
   expect_match(ui_text, 'value="10000"', fixed = TRUE)
+  expect_match(ui_text, 'value="25000"', fixed = TRUE)
   expect_match(ui_text, 'value="50000"', fixed = TRUE)
   expect_false(grepl('value="10000" checked="checked"', ui_text, fixed = TRUE))
+  expect_false(grepl('value="25000" checked="checked"', ui_text, fixed = TRUE))
+  expect_false(grepl('value="50000" checked="checked"', ui_text, fixed = TRUE))
 
   shiny::testServer(app_server, {
     session$setInputs(
@@ -106,14 +122,34 @@ test_that("simulated power distinguishes real and assumed risk ratios", {
   expect_match(ui_text, "RR supuesto por SPRT clasico 2", fixed = TRUE)
 })
 
-test_that("the binomial simulation is absent from the app interface", {
+test_that("the app exposes the fixed MENB MNQ Pyrexia binomial analysis", {
   source(file.path("..", "..", "app.R"), local = TRUE)
 
   ui_text <- as.character(ui)
-  expect_false(grepl("Binomial simulado", ui_text, fixed = TRUE))
-  expect_false(grepl('id="binomial_n"', ui_text, fixed = TRUE))
-  expect_false(grepl('id="matching_ratio"', ui_text, fixed = TRUE))
-  expect_false(grepl('id="binomial_rr"', ui_text, fixed = TRUE))
+  expect_match(ui_text, "Binomial MENB vs MNQ", fixed = TRUE)
+  expect_match(ui_text, "proporcion de reportes", fixed = TRUE)
+  expect_match(ui_text, "no estima incidencia", fixed = TRUE)
+  expect_match(ui_text, 'id="binomial_summary"', fixed = TRUE)
+  expect_match(ui_text, 'id="binomial_proportion_plot"', fixed = TRUE)
+  expect_match(ui_text, 'id="binomial_llr_plot"', fixed = TRUE)
+  expect_match(ui_text, 'id="binomial_decision"', fixed = TRUE)
+  expect_match(ui_text, 'id="binomial_monthly_table"', fixed = TRUE)
+
+  shiny::testServer(app_server, {
+    session$setInputs(alpha = "0.05", simulation_reps = "1000")
+
+    expect_equal(nrow(binomial_series()), 120L)
+    expect_equal(length(binomial_analysis()$llr), 120L)
+    expect_true(all(is.finite(binomial_analysis()$llr)))
+    expect_true(is.finite(binomial_boundary()$critical_value))
+    expect_lte(
+      mean(
+        binomial_boundary()$null_maxima >=
+          binomial_boundary()$critical_value
+      ),
+      0.05
+    )
+  })
 })
 
 test_that("Poisson diagnostics explains its objective and interpretation", {
@@ -152,14 +188,17 @@ test_that("alpha 0.10 is available in general and discretization controls", {
   )
 })
 
-test_that("Poisson diagnostics is the final navigation tab", {
-  source(file.path("..", "..", "app.R"), local = TRUE)
+test_that("the deck explains binomial z and uses horizon N", {
+  deck <- readLines(
+    file.path("..", "..", "..", "..", "presentation", "maxsprt.typ"),
+    warn = FALSE, encoding = "UTF-8"
+  )
 
-  ui_text <- as.character(ui)
-  method_position <- regexpr('data-value="Metodo"', ui_text, fixed = TRUE)[1]
-  diagnostic_position <- regexpr(
-    'data-value="Diagnostico Poisson"', ui_text, fixed = TRUE
-  )[1]
-
-  expect_gt(diagnostic_position, method_position)
+  contains_bytes <- function(pattern) {
+    any(grepl(pattern, deck, fixed = TRUE, useBytes = TRUE))
+  }
+  expect_true(contains_bytes('z=1 arrow P("expuesto")=1/2'))
+  expect_true(contains_bytes('(alpha, N, z)'))
+  expect_true(contains_bytes('Volvemos al caso Poisson'))
+  expect_true(contains_bytes('antes de $T$'))
 })

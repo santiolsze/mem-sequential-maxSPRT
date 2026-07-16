@@ -1,5 +1,11 @@
 # Project Memory
 
+- 2026-07-16: Removed the active `Diagnostico Poisson` Shiny tab, its guide entry, and its server outputs. The reusable `poisson_gof()` implementation and its unit tests remain available. Also removed the global FAERS/VAERS caveat strip requested for the live demo. Extended the discretization selector with optional `K = 25000` and `K = 50000`; selecting any `K >= 25000` caps effective Monte Carlo repetitions at 5,000 and reports the adjustment in the UI.
+
+- 2026-07-16: Reorganized the presentation's experimental handoff into three slides placed before the Shiny separator: (1) two public spontaneous-report sources and three 2016--2025 target series, (2) separate contemporaneous comparator constructions for ELIQUIS and the VAERS vaccine series plus the distinct binomial MENB--MNQ panel, and (3) what report-level signals can and cannot establish. Accumulated observed/expected totals were removed from the deck because they are shown interactively in Shiny. The Shiny separator now follows these slides, and the closing separator follows the live-demo handoff.
+- 2026-07-16: Reorganized the Typst deck into seven explicit narrative sections with consistent divider slides and `01 / 07`--`07 / 07` counters: public-health context, classical SPRT, Poisson MaxSPRT, binomial variant, Poisson threshold calculation, periodic/discrete looks, and the real-data demonstration. Short technical labels remain in the top bar while the centered divider titles state the audience-facing question or takeaway. Existing technical slides remain in their prior order.
+- 2026-07-16: Reworked the Typst deck introduction into two slides. The first establishes the CDC as a major U.S. federal public-health institution, gives the FY2025 requested budget and VSD scale, and accurately states that MaxSPRT arose from a concrete need in the CDC-sponsored VSD rather than calling the paper a CDC publication. The second motivates post-market pharmacovigilance through rare, delayed, and subgroup-specific adverse events and closes with the repeated-monitoring/false-alarm question. CDC sources are listed only in the references slide, not in the audience-facing narrative.
+
 - 2026-07-11: Converted local openFDA and VAERS data to compressed Parquet with
   `zstd` using `experimentacion/scripts/build_parquet_datasets.py`.
 - Processed openFDA control series is at
@@ -133,3 +139,36 @@
   monthly table, simulation profile, and Poisson diagnostics from that month.
   The selector uses YYYY-MM labels, defaults to the first available month, and
   refreshes when the real-data preset changes.
+- 2026-07-15: Added a fixed `Binomial MENB vs MNQ` Shiny analysis for Pyrexia.
+  It conditions on each month's combined MENB/MNQ Pyrexia reports, uses the
+  monthly allocation probability `MENB reports / (MENB reports + MNQ reports)`,
+  fits one common reporting RR above one, and calibrates the monthly GLR
+  boundary by conditional Monte Carlo. Its alpha statement is conditional on
+  the observed monthly event totals and report margins; it compares reporting
+  proportions, not incidence or causality. The presentation now defines `z`
+  as the control/exposed opportunity ratio, states that `P(exposed)=1/2` only
+  for `z=1`, and explicitly labels the later `T` example as a return to the
+  Poisson case.
+- 2026-07-15: Expanded the Typst presentation's Table 1--3 construction section.
+  It now derives the crossing point from the LLR equation through the
+  substitution `x = mu(s_n)/n`, puts it into Lambert W canonical form, explains
+  why the principal branch is used, shows the Poisson non-absorbed-state
+  recursion, inverts `alpha(V,T)` numerically to obtain the critical value, and
+  maps the same recursion to power and expected-time quantities in Tables 2--3.
+- 2026-07-15: Added a standalone, base-R pedagogical replication of the exact
+  binomial MaxSPRT alpha calibration at
+  `experimentacion/scripts/replicate_binomial_alpha.R`, with focused tests at
+  `experimentacion/tests/testthat/test-replicate-binomial-alpha.R`. It uses an
+  absorbing Markov chain and an independent enumeration of all 1,024 paths for
+  `z = 1`, `N = 10`. It reproduces Table 4's displayed boundary `V = 2.77259`
+  and effective alpha `0.041015625`; including equality at `4 log(2)` would give
+  alpha `0.0703125`. Runtime CSV walkthroughs are written under
+  `experimentacion/results/binomial_alpha/`. This is a private teaching script
+  and is deliberately not integrated into Shiny.
+- 2026-07-15: Replaced the presentation's generic critical-value trajectory
+  image with a native Typst/CeTZ conceptual diagram. The new slide shows that
+  the Poisson MaxSPRT LLR decreases while cumulative expected events grow
+  between observed events, jumps when an event arrives, rejects at the
+  horizontal boundary `V`, and otherwise stops at the vertical horizon
+  `T = mu(t_max)`. It explicitly states that when `lambda_0(t) > 0`, calendar
+  time and cumulative expected events are in bijective correspondence.

@@ -86,3 +86,55 @@ test_that("binomial MaxSPRT returns zero without excess exposure", {
   expect_gt(binomial_maxsprt_llr(4, 5, matching_ratio = 1), 0)
   expect_equal(binomial_critical_value(100, 1), 3.46574)
 })
+
+test_that("stratified binomial MaxSPRT reduces to the fixed-ratio formula", {
+  source(file.path("..", "..", "R", "sequential.R"))
+
+  result <- stratified_binomial_maxsprt(
+    target_events = c(2, 2), comparator_events = c(1, 0),
+    target_reports = c(100, 100), comparator_reports = c(100, 100)
+  )
+
+  expect_equal(
+    result$llr,
+    binomial_maxsprt_llr(c(2, 4), c(3, 5), matching_ratio = 1),
+    tolerance = 1e-7
+  )
+  expect_equal(result$p0, c(0.5, 0.5))
+  expect_equal(result$llr[1], 2 * log(2 / 3) + log(1 / 3) - 3 * log(0.5))
+  expect_gt(result$rr_hat[2], 1)
+})
+
+test_that("stratified binomial MaxSPRT ignores zero-event strata", {
+  source(file.path("..", "..", "R", "sequential.R"))
+
+  with_empty <- stratified_binomial_maxsprt(
+    target_events = c(0, 4), comparator_events = c(0, 1),
+    target_reports = c(50, 100), comparator_reports = c(200, 100)
+  )
+  without_empty <- stratified_binomial_maxsprt(
+    target_events = 4, comparator_events = 1,
+    target_reports = 100, comparator_reports = 100
+  )
+
+  expect_equal(with_empty$llr, c(0, without_empty$llr))
+  expect_equal(with_empty$rr_hat[1], 1)
+})
+
+test_that("stratified binomial calibration is reproducible and conservative", {
+  source(file.path("..", "..", "R", "sequential.R"))
+
+  arguments <- list(
+    total_events = rep(5, 12),
+    target_reports = rep(100, 12),
+    comparator_reports = rep(100, 12),
+    alpha = 0.05, reps = 1000L, seed = 42L
+  )
+  first <- do.call(calibrate_stratified_binomial_boundary, arguments)
+  second <- do.call(calibrate_stratified_binomial_boundary, arguments)
+
+  expect_equal(first$critical_value, second$critical_value)
+  expect_equal(first$null_maxima, second$null_maxima)
+  expect_true(is.finite(first$critical_value))
+  expect_lte(mean(first$null_maxima >= first$critical_value), 0.05)
+})

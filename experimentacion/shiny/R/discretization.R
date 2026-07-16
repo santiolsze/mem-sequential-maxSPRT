@@ -40,7 +40,14 @@ discretization_effective_reps <- function(looks, requested_reps) {
     stop("requested_reps must be one positive integer", call. = FALSE)
   }
 
-  as.integer(if (max(looks) >= 10000) min(requested_reps, 100000) else requested_reps)
+  max_looks <- max(looks)
+  as.integer(if (max_looks >= 25000) {
+    min(requested_reps, 5000)
+  } else if (max_looks >= 10000) {
+    min(requested_reps, 100000)
+  } else {
+    requested_reps
+  })
 }
 
 with_discretization_seed <- function(seed, code) {
